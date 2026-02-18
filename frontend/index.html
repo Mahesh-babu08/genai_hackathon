@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Code Review & Rewrite Agent</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f1f5f9;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .code-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(71, 85, 105, 0.8);
+            border-radius: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.5);
+        }
+
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #6366f1;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite;
+            /* Safari */
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Markdown Styles */
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3 {
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .markdown-body h1 {
+            font-size: 1.5em;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 0.3em;
+        }
+
+        .markdown-body h2 {
+            font-size: 1.3em;
+        }
+
+        .markdown-body p {
+            margin-bottom: 1em;
+            line-height: 1.6;
+        }
+
+        .markdown-body ul {
+            list-style-type: disc;
+            padding-left: 1.5em;
+            margin-bottom: 1em;
+        }
+
+        .markdown-body li {
+            margin-bottom: 0.3em;
+        }
+
+        .markdown-body code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9em;
+        }
+
+        .markdown-body pre {
+            background: #1e293b;
+            padding: 1em;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 1em;
+        }
+
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+        }
+
+        .markdown-body blockquote {
+            border-left: 4px solid #6366f1;
+            padding-left: 1em;
+            color: #94a3b8;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body class="flex flex-col h-screen">
+
+    <!-- Header -->
+    <header class="h-16 glass-panel border-b border-slate-700 flex items-center justify-between px-6 z-20">
+        <div class="flex items-center gap-3">
+            <div class="text-3xl">🤖</div>
+            <div>
+                <h1
+                    class="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                    AI Code Review & Rewrite Agent</h1>
+                <p class="text-xs text-slate-400">AI-Powered Code Analysis & Rewriting</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div id="api-status"
+                class="flex items-center gap-2 text-xs text-emerald-400 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                System Online
+            </div>
+            <button onclick="window.location.href='/'" class="text-slate-400 hover:text-white transition-colors">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Sidebar - Input -->
+        <div class="w-1/3 min-w-[350px] max-w-[500px] flex flex-col glass-panel border-r border-slate-700 z-10">
+            <div class="p-5 border-b border-slate-700">
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Language</label>
+                <div class="relative">
+                    <select id="language-select"
+                        class="w-full bg-slate-800/50 border border-slate-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer">
+                        <option value="Python">Python</option>
+                        <option value="JavaScript">JavaScript</option>
+                        <option value="Java">Java</option>
+                        <option value="C++">C++</option>
+                        <option value="TypeScript">TypeScript</option>
+                        <option value="Go">Go</option>
+                        <option value="Rust">Rust</option>
+                    </select>
+                    <div class="absolute right-3 top-3 text-slate-400 pointer-events-none">
+                        <i class="fas fa-chevron-down text-xs"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col p-5 min-h-0">
+                <label
+                    class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex justify-between">
+                    <span>Source Code</span>
+                    <button id="clear-code" class="text-xs text-blue-400 hover:text-blue-300">Clear</button>
+                </label>
+                <textarea id="code-input"
+                    class="w-full flex-1 bg-slate-900/50 border border-slate-700 rounded-lg p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none custom-scrollbar text-slate-300 placeholder-slate-600"
+                    placeholder="// Paste your code here..." spellcheck="false"></textarea>
+            </div>
+
+            <div class="p-5 border-t border-slate-700 bg-slate-900/30">
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Focus
+                    Areas</label>
+                <div class="grid grid-cols-2 gap-3 mb-5">
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <input type="checkbox" value="Bugs" checked
+                            class="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-offset-slate-900 focus:ring-blue-500">
+                        <span class="text-sm text-slate-300 group-hover:text-white transition-colors">Bugs</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <input type="checkbox" value="Security" checked
+                            class="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-offset-slate-900 focus:ring-blue-500">
+                        <span class="text-sm text-slate-300 group-hover:text-white transition-colors">Security</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <input type="checkbox" value="Performance"
+                            class="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-offset-slate-900 focus:ring-blue-500">
+                        <span class="text-sm text-slate-300 group-hover:text-white transition-colors">Performance</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <input type="checkbox" value="Best Practices"
+                            class="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-offset-slate-900 focus:ring-blue-500">
+                        <span class="text-sm text-slate-300 group-hover:text-white transition-colors">Best
+                            Practices</span>
+                    </label>
+                </div>
+
+                <div class="flex gap-3">
+                    <button id="btn-review"
+                        class="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-2">
+                        <span>Review Code</span>
+                    </button>
+                    <button id="btn-rewrite"
+                        class="flex-1 py-2.5 px-4 bg-purple-600 hover:bg-purple-500 rounded-lg text-white font-medium shadow-lg shadow-purple-500/20 transition-all active:scale-95 flex items-center justify-center gap-2">
+                        <span>Fix & Rewrite</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content - Output -->
+        <div class="flex-1 flex flex-col bg-slate-900/50 relative">
+
+            <!-- Tabs -->
+            <div class="h-12 border-b border-slate-700 flex items-center px-4 bg-slate-800/30">
+                <button
+                    class="tab-btn px-4 h-full border-b-2 border-transparent text-sm font-medium text-slate-400 hover:text-white transition-all active"
+                    data-tab="review">
+                    <i class="fas fa-clipboard-check mr-2"></i>Code Review
+                </button>
+                <button
+                    class="tab-btn px-4 h-full border-b-2 border-transparent text-sm font-medium text-slate-400 hover:text-white transition-all"
+                    data-tab="rewrite">
+                    <i class="fas fa-wand-magic-sparkles mr-2"></i>Rewritten Code
+                </button>
+                <button
+                    class="tab-btn px-4 h-full border-b-2 border-transparent text-sm font-medium text-slate-400 hover:text-white transition-all"
+                    data-tab="how-it-works">
+                    <i class="fas fa-info-circle mr-2"></i>How It Works
+                </button>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-hidden relative">
+                <!-- Loading Overlay -->
+                <div id="loader"
+                    class="absolute inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 hidden">
+                    <div class="loader mb-4"></div>
+                    <p class="text-blue-400 text-sm font-medium animate-pulse">Processing with Groq AI...</p>
+                </div>
+
+                <!-- Tab: Review -->
+                <div id="tab-review" class="tab-content h-full flex flex-col p-6 overflow-y-auto custom-scrollbar">
+
+                    <!-- Empty State -->
+                    <div id="review-empty" class="flex flex-col items-center justify-center h-full text-slate-500">
+                        <i class="fas fa-code text-6xl mb-4 opacity-30"></i>
+                        <p class="text-lg">Submit code to generate a review</p>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="review-content" class="hidden space-y-6">
+                        <!-- Severity Cards -->
+                        <div class="grid grid-cols-4 gap-4">
+                            <div class="glass-panel p-4 rounded-xl border-l-4 border-red-500">
+                                <span class="text-xs text-slate-400 uppercase">Critical</span>
+                                <div class="text-2xl font-bold text-white mt-1" id="count-critical">0</div>
+                            </div>
+                            <div class="glass-panel p-4 rounded-xl border-l-4 border-orange-500">
+                                <span class="text-xs text-slate-400 uppercase">High</span>
+                                <div class="text-2xl font-bold text-white mt-1" id="count-high">0</div>
+                            </div>
+                            <div class="glass-panel p-4 rounded-xl border-l-4 border-yellow-500">
+                                <span class="text-xs text-slate-400 uppercase">Medium</span>
+                                <div class="text-2xl font-bold text-white mt-1" id="count-medium">0</div>
+                            </div>
+                            <div class="glass-panel p-4 rounded-xl border-l-4 border-emerald-500">
+                                <span class="text-xs text-slate-400 uppercase">Low</span>
+                                <div class="text-2xl font-bold text-white mt-1" id="count-low">0</div>
+                            </div>
+                        </div>
+
+                        <!-- Summary -->
+                        <div class="glass-panel p-6 rounded-xl">
+                            <h3 class="text-lg font-semibold text-white mb-3"><i
+                                    class="fas fa-bullseye mr-2 text-blue-400"></i>Summary</h3>
+                            <div id="review-summary" class="text-slate-300 text-sm leading-relaxed"></div>
+                        </div>
+
+                        <!-- Detailed Review -->
+                        <div class="glass-panel p-6 rounded-xl relative">
+                            <button
+                                class="absolute top-4 right-4 text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded transition-colors"
+                                onclick="copyText('review-markdown')">
+                                <i class="fas fa-copy mr-1"></i>Copy
+                            </button>
+                            <h3 class="text-lg font-semibold text-white mb-4"><i
+                                    class="fas fa-list-ul mr-2 text-purple-400"></i>Detailed Findings</h3>
+                            <div id="review-markdown" class="markdown-body text-sm text-slate-300"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Rewrite -->
+                <div id="tab-rewrite" class="tab-content h-full hidden flex flex-col overflow-hidden">
+                    <!-- Empty State -->
+                    <div id="rewrite-empty" class="flex flex-col items-center justify-center h-full text-slate-500">
+                        <i class="fas fa-wand-magic-sparkles text-6xl mb-4 opacity-30"></i>
+                        <p class="text-lg">Submit code to generate a rewrite</p>
+                    </div>
+
+                    <div id="rewrite-content"
+                        class="hidden h-full flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-700">
+                        <!-- Left: Original -->
+                        <div class="flex-1 flex flex-col min-h-0 bg-slate-900/30">
+                            <div
+                                class="h-10 border-b border-slate-700 flex items-center px-4 bg-slate-800/50 justify-between">
+                                <span class="text-xs font-semibold text-slate-400 uppercase">Original</span>
+                            </div>
+                            <div class="flex-1 overflow-auto custom-scrollbar p-4">
+                                <pre><code id="original-code-display" class="language-python rounded-lg text-sm bg-transparent"></code></pre>
+                            </div>
+                        </div>
+
+                        <!-- Right: Rewritten -->
+                        <div class="flex-1 flex flex-col min-h-0 bg-slate-900/30">
+                            <div
+                                class="h-10 border-b border-slate-700 flex items-center px-4 bg-slate-800/50 justify-between">
+                                <span class="text-xs font-semibold text-emerald-400 uppercase">Optimized</span>
+                                <button class="text-xs text-slate-400 hover:text-white"
+                                    onclick="copyText('rewritten-code-display')">
+                                    <i class="fas fa-copy mr-1"></i>Copy
+                                </button>
+                            </div>
+                            <div class="flex-1 overflow-auto custom-scrollbar p-4">
+                                <pre><code id="rewritten-code-display" class="language-python rounded-lg text-sm bg-transparent"></code></pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom: Improvements List (Collapsible/Fixed) -->
+                    <div id="improvements-panel"
+                        class="h-1/3 border-t border-slate-700 p-4 bg-slate-800/80 overflow-y-auto custom-scrollbar hidden">
+                        <h4 class="text-sm font-semibold text-white mb-2">Key Improvements</h4>
+                        <div id="improvements-list" class="markdown-body text-xs text-slate-300"></div>
+                    </div>
+                </div>
+
+                <!-- Tab: How It Works -->
+                <div id="tab-how-it-works" class="tab-content h-full hidden p-8 overflow-y-auto custom-scrollbar">
+                    <div class="max-w-3xl mx-auto glass-panel p-8 rounded-2xl">
+                        <h2 class="text-2xl font-bold text-white mb-6">How to use Agent</h2>
+                        <div class="space-y-6">
+                            <div class="flex gap-4">
+                                <div
+                                    class="w-10 h-10 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-lg">
+                                    1</div>
+                                <div>
+                                    <h3 class="font-semibold text-white">Paste your Code</h3>
+                                    <p class="text-slate-400 text-sm mt-1">Select your language and paste the source
+                                        code into the editor on the left.</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-4">
+                                <div
+                                    class="w-10 h-10 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-lg">
+                                    2</div>
+                                <div>
+                                    <h3 class="font-semibold text-white">Choose Focus Areas</h3>
+                                    <p class="text-slate-400 text-sm mt-1">Select specific aspects like Security,
+                                        Performance, or Bugs to tailor the analysis.</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-4">
+                                <div
+                                    class="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-lg">
+                                    3</div>
+                                <div>
+                                    <h3 class="font-semibold text-white">Review & Fix</h3>
+                                    <p class="text-slate-400 text-sm mt-1">Get an instant detailed review or let the AI
+                                        rewrite your code to be production-ready.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Tab Switching
+        const tabs = document.querySelectorAll('.tab-btn');
+        const contents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => {
+                    t.classList.remove('border-blue-500', 'text-white', 'active');
+                    t.classList.add('border-transparent', 'text-slate-400');
+                });
+                tab.classList.remove('border-transparent', 'text-slate-400');
+                tab.classList.add('border-blue-500', 'text-white', 'active');
+
+                const target = tab.dataset.tab;
+                contents.forEach(content => {
+                    if (content.id === `tab-${target}`) {
+                        content.classList.remove('hidden');
+                    } else {
+                        content.classList.add('hidden');
+                    }
+                });
+            });
+        });
+
+        // App Logic
+        const API_URL = 'http://127.0.0.1:8000/api';
+
+        const codeInput = document.getElementById('code-input');
+        const langSelect = document.getElementById('language-select');
+        const loader = document.getElementById('loader');
+
+        document.getElementById('clear-code').addEventListener('click', () => {
+            codeInput.value = '';
+            codeInput.focus();
+        });
+
+        function getFocusAreas() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+
+        async function postData(endpoint, data) {
+            loader.classList.remove('hidden');
+            try {
+                const response = await fetch(`${API_URL}/${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) throw new Error(`Error: ${response.statusText}`);
+                return await response.json();
+            } catch (error) {
+                console.error("API Error:", error);
+                alert("An error occurred. Check console for details.");
+                return null;
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        // Review Logic
+        document.getElementById('btn-review').addEventListener('click', async () => {
+            const code = codeInput.value;
+            if (!code.trim()) return alert("Please enter some code first.");
+
+            // Switch to review tab
+            document.querySelector('[data-tab="review"]').click();
+
+            const data = await postData('review', {
+                code: code,
+                language: langSelect.value,
+                focus_areas: getFocusAreas()
+            });
+
+            if (data) {
+                document.getElementById('review-empty').classList.add('hidden');
+                document.getElementById('review-content').classList.remove('hidden');
+
+                // Update counts
+                document.getElementById('count-critical').textContent = data.critical ? data.critical.length : 0;
+                document.getElementById('count-high').textContent = data.high ? data.high.length : 0;
+                document.getElementById('count-medium').textContent = data.medium ? data.medium.length : 0;
+                document.getElementById('count-low').textContent = data.low ? data.low.length : 0;
+
+                // Update text
+                document.getElementById('review-summary').textContent = data.summary || "No summary provided.";
+
+                // Render Markdown
+                document.getElementById('review-markdown').innerHTML = marked.parse(data.raw_review || "");
+            }
+        });
+
+        // Rewrite Logic
+        document.getElementById('btn-rewrite').addEventListener('click', async () => {
+            const code = codeInput.value;
+            if (!code.trim()) return alert("Please enter some code first.");
+
+            // Switch to rewrite tab
+            document.querySelector('[data-tab="rewrite"]').click();
+
+            const data = await postData('rewrite', {
+                code: code,
+                language: langSelect.value,
+                focus_areas: getFocusAreas()
+            });
+
+            if (data) {
+                document.getElementById('rewrite-empty').classList.add('hidden');
+                document.getElementById('rewrite-content').classList.remove('hidden');
+                document.getElementById('improvements-panel').classList.remove('hidden');
+
+                // Update Code display
+                document.getElementById('original-code-display').textContent = code;
+
+                // Clean up markdown code blocks if present in extracted code (just in case the regex in backend wasn't perfect, or for display safety)
+                // The backend tries to extract, but let's assume it sends clean code or we handle it.
+                // If the backend sends markdown code blocks, we might want to strip them for the highlighting block which expects raw code usually, 
+                // OR marked.js handles it. Highlight.js expects raw text.
+                // Let's rely on backend's extraction or simple cleaning.
+                let cleanCode = data.rewritten_code;
+                if (cleanCode.startsWith('```')) {
+                    const matches = cleanCode.match(/```(?:\w+)?\n([\s\S]*?)```/);
+                    if (matches && matches[1]) cleanCode = matches[1];
+                }
+
+                const rewrittenBlock = document.getElementById('rewritten-code-display');
+                rewrittenBlock.textContent = cleanCode;
+
+                // Highlight
+                hljs.highlightElement(document.getElementById('original-code-display'));
+                hljs.highlightElement(rewrittenBlock);
+
+                // Improvements
+                // If data.improvements is the full text, we render it.
+                document.getElementById('improvements-list').innerHTML = marked.parse(data.improvements || "");
+            }
+        });
+
+        function copyText(elementId) {
+            const text = document.getElementById(elementId).innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                // Could show a toast here
+                const btn = event.currentTarget;
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied';
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+
+</html>
