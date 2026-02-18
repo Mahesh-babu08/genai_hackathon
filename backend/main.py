@@ -42,16 +42,22 @@ class RewriteRequest(BaseModel):
     language: str
     focus_areas: List[str] # Added to pass focus areas if needed for rewrite context
 
+class ChatRequest(BaseModel):
+    message: str
+    language: Optional[str] = None
+    context_code: Optional[str] = None
+    review_summary: Optional[str] = None
+
 # --- API Endpoints ---
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    with open("../frontend/login.html", "r") as f:
+    with open("../frontend/login.html", "r", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/app", response_class=HTMLResponse)
 async def read_app():
-    with open("../frontend/index.html", "r") as f:
+    with open("../frontend/index.html", "r", encoding="utf-8") as f:
         return f.read()
 
 @app.post("/api/review")
@@ -162,6 +168,63 @@ Code:
             "rewritten_code": rewritten_code,
             "improvements": response_text # sending full text for now so frontend can display the list and everything
         })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat")
+async def chat_assistant(request: ChatRequest):
+    try:
+        system_prompt = f"""You are an expert AI Programming Assistant with 15+ years of experience in software engineering.
+
+Your job:
+- Explain bugs clearly
+- Explain security issues
+- Explain performance problems
+- Explain best practices
+- Explain rewritten code
+- Answer programming doubts
+- Provide simple beginner-friendly explanations
+- Give examples if needed
+
+If context_code is provided, use it to explain.
+If review_summary is provided, explain the detected issues clearly.
+
+Always:
+- Be clear
+- Be structured
+- Be concise but informative
+- Use bullet points when needed
+- Give example fixes when explaining
+
+User Question:
+{request.message}
+
+Programming Language:
+{request.language if request.language else "Not specified"}
+
+Code Context:
+{request.context_code if request.context_code else "No code context provided"}
+
+Review Summary:
+{request.review_summary if request.review_summary else "No review summary provided"}
+"""
+        completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": system_prompt,
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.4,
+            max_tokens=1500,
+            top_p=0.9,
+        )
+        
+        reply = completion.choices[0].message.content
+        
+        return JSONResponse(content={"reply": reply})
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

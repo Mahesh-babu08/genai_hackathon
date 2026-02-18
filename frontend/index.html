@@ -261,6 +261,11 @@
                     data-tab="how-it-works">
                     <i class="fas fa-info-circle mr-2"></i>How It Works
                 </button>
+                <button
+                    class="tab-btn px-4 h-full border-b-2 border-transparent text-sm font-medium text-slate-400 hover:text-white transition-all"
+                    data-tab="ai-chat">
+                    <i class="fas fa-comments mr-2"></i>AI Assistant
+                </button>
             </div>
 
             <!-- Content Area -->
@@ -403,6 +408,64 @@
                                     <p class="text-slate-400 text-sm mt-1">Get an instant detailed review or let the AI
                                         rewrite your code to be production-ready.</p>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: AI Chat -->
+                <div id="tab-ai-chat" class="tab-content h-full hidden flex flex-col relative">
+                    <!-- Chat History -->
+                    <div id="chat-history" class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-20">
+                        <!-- Welcome Message -->
+                        <div class="flex gap-4">
+                            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+                                🤖
+                            </div>
+                            <div
+                                class="glass-panel p-4 rounded-2xl rounded-tl-none max-w-[80%] border border-slate-700">
+                                <p class="text-sm text-slate-300">Hello! I'm your AI Programming Assistant. I can help
+                                    you with:</p>
+                                <ul class="list-disc list-inside text-sm text-slate-400 mt-2 space-y-1">
+                                    <li>Explaining bugs and security issues</li>
+                                    <li>Clarifying rewritten code</li>
+                                    <li>Answering programming questions</li>
+                                </ul>
+                                <p class="text-sm text-slate-300 mt-2">Ask me anything about your code!</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Typing Indicator -->
+                    <div id="typing-indicator"
+                        class="hidden absolute bottom-24 left-6 z-10 transition-opacity duration-300">
+                        <div
+                            class="bg-slate-800/90 px-4 py-2 rounded-full border border-slate-700 flex items-center gap-1 shadow-lg">
+                            <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></span>
+                            <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"
+                                style="animation-delay: 0.1s"></span>
+                            <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"
+                                style="animation-delay: 0.2s"></span>
+                        </div>
+                    </div>
+
+                    <!-- Chat Input Area -->
+                    <div
+                        class="p-4 bg-slate-900/90 border-t border-slate-700 backdrop-blur-md absolute bottom-0 w-full z-20">
+                        <div class="flex gap-3 max-w-4xl mx-auto">
+                            <button id="clear-chat"
+                                class="p-3 text-slate-400 hover:text-red-400 transition-colors rounded-lg hover:bg-slate-800"
+                                title="Clear Chat">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                            <div class="flex-1 relative group">
+                                <input type="text" id="chat-input"
+                                    class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-slate-500 pr-12 transition-all group-hover:border-slate-600"
+                                    placeholder="Type your question here... (Enter to send)">
+                                <button id="send-chat"
+                                    class="absolute right-2 top-1.5 p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+                                    <i class="fas fa-paper-plane text-sm w-5 h-5 flex items-center justify-center"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -565,6 +628,142 @@
                 }, 2000);
             });
         }
+
+        // --- AI Chat Logic ---
+        const chatInput = document.getElementById('chat-input');
+        const chatHistory = document.getElementById('chat-history');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const sendChatBtn = document.getElementById('send-chat');
+        const clearChatBtn = document.getElementById('clear-chat');
+
+        let lastReviewSummary = "";
+
+        // Hook into review success to capture summary
+        const originalReviewClick = document.getElementById('btn-review').onclick; // This might be null because we used addEventListener.
+        // We can't easily hook into the existing event listener without modifying it or adding a new one that runs after.
+        // Since we modified the code above, I will just capture the data when postData returns in the existing listeners if I could, 
+        // but I didn't modify the existing listeners in the previous steps.
+        // I will add a new listener to the buttons to update the global validation state if needed, 
+        // OR better, I will assume the user has run a review if the UI shows it.
+        // Actually, the requirements say "Each message sent should include... Latest review summary (if exists)".
+        // I need to store it. I'll modify the existing listeners OR just patch the `postData` wrapper or add a side-effect.
+        // Since I can't easily patch the *inside* of the existing listeners without replacing them entirely,
+        // I will add a mechanism to read the current summary from the DOM when sending a message.
+
+        function getLatestReviewSummary() {
+            const summaryEl = document.getElementById('review-summary');
+            return summaryEl ? summaryEl.textContent : "";
+        }
+
+        function appendMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = `flex gap-4 ${role === 'user' ? 'flex-row-reverse' : ''}`;
+
+            const avatar = role === 'ai'
+                ? `<div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">🤖</div>`
+                : `<div class="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center shrink-0"><i class="fas fa-user"></i></div>`;
+
+            const bubbleClass = role === 'ai'
+                ? 'bg-slate-800/80 border border-slate-700 rounded-tl-none'
+                : 'bg-blue-600 text-white rounded-tr-none';
+
+            // Parse Markdown for AI, text for User
+            const content = role === 'ai' ? marked.parse(text) : text.replace(/\n/g, '<br>');
+
+            div.innerHTML = `
+                ${avatar}
+                <div class="${bubbleClass} p-4 rounded-2xl max-w-[80%] text-sm ${role === 'ai' ? 'text-slate-300 markdown-body' : ''}">
+                    ${content}
+                    ${role === 'ai' ? `
+                    <div class="mt-2 flex justify-end">
+                        <button class="text-xs text-slate-500 hover:text-white transition-colors" onclick="navigator.clipboard.writeText(this.parentElement.parentElement.innerText).then(() => alert('Copied!'))">
+                            <i class="fas fa-copy mr-1"></i>Copy
+                        </button>
+                    </div>` : ''}
+                </div>
+            `;
+
+            chatHistory.appendChild(div);
+            // Highlight code blocks in the new message
+            if (role === 'ai') {
+                div.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function showTyping() {
+            typingIndicator.classList.remove('hidden');
+            scrollToBottom();
+        }
+
+        function hideTyping() {
+            typingIndicator.classList.add('hidden');
+        }
+
+        async function handleSendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Clear input
+            chatInput.value = '';
+
+            // User Message
+            appendMessage('user', message);
+
+            // Show Typing
+            showTyping();
+
+            // Prepare Context
+            const context = {
+                message: message,
+                language: langSelect.value,
+                context_code: codeInput.value,
+                review_summary: getLatestReviewSummary()
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(context)
+                });
+
+                if (!response.ok) throw new Error(`Error: ${response.statusText}`);
+                const data = await response.json();
+
+                hideTyping();
+                appendMessage('ai', data.reply);
+
+            } catch (error) {
+                console.error("Chat Error:", error);
+                hideTyping();
+                appendMessage('ai', "⚠️ Sorry, I encountered an error creating a response.");
+            }
+        }
+
+        sendChatBtn.addEventListener('click', handleSendMessage);
+
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSendMessage();
+            }
+        });
+
+        clearChatBtn.addEventListener('click', () => {
+            if (confirm("Clear chat history?")) {
+                // Keep the welcome message
+                const welcome = chatHistory.firstElementChild;
+                chatHistory.innerHTML = '';
+                chatHistory.appendChild(welcome);
+            }
+        });
+
     </script>
 </body>
 
