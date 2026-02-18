@@ -667,15 +667,15 @@
                 ? 'bg-slate-800/80 border border-slate-700 rounded-tl-none'
                 : 'bg-blue-600 text-white rounded-tr-none';
 
-            // Parse Markdown for AI, text for User
-            const content = role === 'ai' ? marked.parse(text) : text.replace(/\n/g, '<br>');
+            // Initial content
+            const contentHtml = role === 'ai' ? marked.parse(text) : text.replace(/\n/g, '<br>');
 
             div.innerHTML = `
                 ${avatar}
-                <div class="${bubbleClass} p-4 rounded-2xl max-w-[80%] text-sm ${role === 'ai' ? 'text-slate-300 markdown-body' : ''}">
-                    ${content}
+                <div class="${bubbleClass} p-4 rounded-2xl max-w-[80%] text-sm ${role === 'ai' ? 'text-slate-300 markdown-body' : ''} message-content">
+                    ${contentHtml}
                     ${role === 'ai' ? `
-                    <div class="mt-2 flex justify-end">
+                    <div class="mt-2 flex justify-end copy-btn-container hidden">
                         <button class="text-xs text-slate-500 hover:text-white transition-colors" onclick="navigator.clipboard.writeText(this.parentElement.parentElement.innerText).then(() => alert('Copied!'))">
                             <i class="fas fa-copy mr-1"></i>Copy
                         </button>
@@ -684,13 +684,10 @@
             `;
 
             chatHistory.appendChild(div);
-            // Highlight code blocks in the new message
-            if (role === 'ai') {
-                div.querySelectorAll('pre code').forEach((block) => {
-                    hljs.highlightElement(block);
-                });
-            }
             scrollToBottom();
+
+            // Return the content div for updating
+            return div.querySelector('.message-content');
         }
 
         function scrollToBottom() {
@@ -716,9 +713,6 @@
             // User Message
             appendMessage('user', message);
 
-            // Show Typing
-            showTyping();
-
             // Prepare Context
             const context = {
                 message: message,
@@ -726,6 +720,11 @@
                 context_code: codeInput.value,
                 review_summary: getLatestReviewSummary()
             };
+
+            // AI Message Container (Empty initially)
+            const aiMsgContent = appendMessage('ai', '');
+            // Add a small blinking cursor or loader initially
+            aiMsgContent.innerHTML = '<span class="animate-pulse">▍</span>';
 
             try {
                 const response = await fetch(`${API_URL}/chat`, {
@@ -735,15 +734,42 @@
                 });
 
                 if (!response.ok) throw new Error(`Error: ${response.statusText}`);
-                const data = await response.json();
 
-                hideTyping();
-                appendMessage('ai', data.reply);
+                // Streaming Logic
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    fullText += chunk;
+
+                    // Render Markdown
+                    aiMsgContent.innerHTML = marked.parse(fullText);
+
+                    // Re-highlight code blocks
+                    aiMsgContent.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+
+                    scrollToBottom();
+                }
+
+                // Final Copy Button
+                aiMsgContent.insertAdjacentHTML('beforeend', `
+                    <div class="mt-2 flex justify-end">
+                        <button class="text-xs text-slate-500 hover:text-white transition-colors" onclick="navigator.clipboard.writeText(this.closest('.message-content').innerText).then(() => alert('Copied!'))">
+                            <i class="fas fa-copy mr-1"></i>Copy
+                        </button>
+                    </div>`);
+
 
             } catch (error) {
                 console.error("Chat Error:", error);
-                hideTyping();
-                appendMessage('ai', "⚠️ Sorry, I encountered an error creating a response.");
+                aiMsgContent.innerHTML += "<br><span class='text-red-400'>⚠️ Error receiving response.</span>";
             }
         }
 

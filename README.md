@@ -57,7 +57,7 @@ AI-Code-Review-Agent/
 
 1.  **Start the server:**
     ```bash
-    uvicorn main:app --reload
+    python -m uvicorn main:app --reload
     ```
 
 2.  **Open in Browser:**
@@ -82,5 +82,4 @@ AI-Code-Review-Agent/
 4.  **Review**: Click "Review Code" for a detailed report.
 5.  **Rewrite**: Click "Fix & Rewrite" to get an optimized version.
 
----
-*Built with ❤️ by AI Agent*
+

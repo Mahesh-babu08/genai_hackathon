@@ -173,58 +173,88 @@ Code:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat")
+@app.post("/api/chat")
 async def chat_assistant(request: ChatRequest):
     try:
-        system_prompt = f"""You are an expert AI Programming Assistant with 15+ years of experience in software engineering.
+        if not request.message:
+            raise HTTPException(status_code=400, detail="Message is required")
 
-Your job:
-- Explain bugs clearly
-- Explain security issues
-- Explain performance problems
-- Explain best practices
-- Explain rewritten code
-- Answer programming doubts
-- Provide simple beginner-friendly explanations
-- Give examples if needed
+        # --- 1. CONTEXT GATING MECHANISM ---
+        # Only include code context if the user actually refers to it.
+        # This prevents the model from obsessing over the code when the user asks a general question.
+        triggers = ["this code", "above code", "my code", "the bug", "fix this", "why is this"]
+        include_context = False
+        
+        # Check if message contains any trigger phrase (case-insensitive)
+        if any(trigger in request.message.lower() for trigger in triggers):
+            include_context = True
+        
+        # Also include context if the message is very short (likely referring to context implicitly like "fix it")
+        if len(request.message.split()) < 5:
+             include_context = True
 
-If context_code is provided, use it to explain.
-If review_summary is provided, explain the detected issues clearly.
+        final_context_code = request.context_code if (include_context and request.context_code) else None
+        final_review_summary = request.review_summary if (include_context and request.review_summary) else None
 
-Always:
-- Be clear
-- Be structured
-- Be concise but informative
-- Use bullet points when needed
-- Give example fixes when explaining
+        # --- 2. SYSTEM PROMPT ---
+        system_prompt = f"""You are an elite AI Coding Copilot comparable to ChatGPT and Gemini.
+
+You must:
+- Be precise.
+- Answer only what is asked.
+- Avoid unnecessary length.
+- Strictly follow requested programming language.
+- Never switch languages.
+- Use context_code only if question refers to it.
+- Avoid hallucinating libraries or APIs.
+- Provide production-grade answers.
+- Adapt explanation depth automatically.
+- Use structured but concise formatting.
+
+Language Lock Rule:
+You MUST generate code only in the requested programming language: {request.language if request.language else "Unknown"}.
+If user did not request code, do NOT generate code.
+
+Precision Rule:
+If question is simple -> answer simply (3-5 lines).
+If question is advanced -> answer technically.
+Do not waste tokens on "Certainly!" or "Here is the code". Just give the answer.
+
+Programming Language: {request.language if request.language else "Not specified"}
+
+Code Context:
+{final_context_code if final_context_code else "No code context provided (answer generally)"}
+
+Review Summary:
+{final_review_summary if final_review_summary else "N/A"}
 
 User Question:
 {request.message}
-
-Programming Language:
-{request.language if request.language else "Not specified"}
-
-Code Context:
-{request.context_code if request.context_code else "No code context provided"}
-
-Review Summary:
-{request.review_summary if request.review_summary else "No review summary provided"}
 """
-        completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": system_prompt,
-                }
-            ],
-            model="llama-3.3-70b-versatile",
-            temperature=0.4,
-            max_tokens=1500,
-            top_p=0.9,
-        )
-        
-        reply = completion.choices[0].message.content
-        
-        return JSONResponse(content={"reply": reply})
+
+        # --- 3. STREAMING GENERATION ---
+        async def generate_stream():
+            stream = client.chat.completions.create(
+                messages=[
+                    {"role": "user", "content": system_prompt}
+                ],
+                model="llama-3.3-70b-versatile",
+                temperature=0.15, # Low temp for precision
+                max_tokens=1500,
+                top_p=0.85,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(generate_stream(), media_type="text/plain")
+
+    except Exception as e:
+        print(f"Error: {e}") # Log error
+        raise HTTPException(status_code=500, detail=str(e))
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
